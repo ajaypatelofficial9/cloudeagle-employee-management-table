@@ -1,23 +1,75 @@
 import { createColumnHelper } from "@tanstack/react-table";
+import type { FilterFn } from "@tanstack/react-table";
 import type { Employee } from "../../../types/employee";
 
 const columnHelper = createColumnHelper<Employee>();
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type EditableEmployee = Partial<Employee>;
+const exactTextFilter: FilterFn<Employee> = (
+  row,
+  columnId,
+  filterValue
+) => {
+  if (!filterValue) return true;
+
+  return row.getValue(columnId) === filterValue;
+};
+
+const toDateInputValue = (value: string) => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const dateFilter: FilterFn<Employee> = (
+  row,
+  columnId,
+  filterValue
+) => {
+  if (!filterValue) return true;
+
+  return toDateInputValue(row.getValue<string>(columnId)) === filterValue;
+};
+
+const salaryRangeFilter: FilterFn<Employee> = (
+  row,
+  columnId,
+  filterValue
+) => {
+  const salary = row.getValue<number>(columnId);
+  const minValue = String(filterValue?.min ?? "").trim();
+  const maxValue = String(filterValue?.max ?? "").trim();
+  const min = Number(minValue);
+  const max = Number(maxValue);
+  const hasMin = minValue !== "" && Number.isFinite(min);
+  const hasMax = maxValue !== "" && Number.isFinite(max);
+
+  if (!hasMin && !hasMax) return true;
+  if (hasMin && salary < min) return false;
+  if (hasMax && salary > max) return false;
+
+  return true;
+};
 
 export const columns = (
   editingRowId: number | null,
-  editedDataRef: React.MutableRefObject<any>,
+  editedDataRef: React.MutableRefObject<EditableEmployee>,
   handleInputChange: (
-    field: string,
+    field: keyof Employee,
     value: string | number
   ) => void,
   handleEdit: (row: Employee) => void,
   handleSave: (id: number) => void,
   handleCancel: () => void,
   handleUndo: (id: number) => void,
-  editingField: string | null,
   setEditingField: (field: string | null) => void,
-  savedHistory: Record<number, any>
+  savedHistory: Record<number, Employee>
 ) => [
     columnHelper.accessor("employeeName", {
       header: "Employee Name",
@@ -70,6 +122,7 @@ export const columns = (
 
     columnHelper.accessor("department", {
       header: "Department",
+      filterFn: exactTextFilter,
     }),
 
     columnHelper.accessor("role", {
@@ -78,6 +131,7 @@ export const columns = (
 
     columnHelper.accessor("salary", {
       header: "Salary",
+      filterFn: salaryRangeFilter,
 
       cell: (info) =>
         editingRowId === info.row.original.id ? (
@@ -104,6 +158,7 @@ export const columns = (
 
     columnHelper.accessor("status", {
       header: "Status",
+      filterFn: exactTextFilter,
       cell: (info) => (
         <span
           className={`px-2 py-1 rounded text-sm w-24 text-center inline-block ${info.getValue() === "Active"
@@ -118,6 +173,7 @@ export const columns = (
 
     columnHelper.accessor("joinDate", {
       header: "Join Date",
+      filterFn: dateFilter,
 
       cell: (info) =>
         new Date(info.getValue()).toLocaleDateString(),
@@ -142,14 +198,14 @@ export const columns = (
               onClick={() => handleSave(employee.id)}
               disabled={emailInvalid}
               title={emailInvalid ? "Please fix the email before saving." : "Save changes"}
-              className={`rounded px-3 py-1 text-white ${emailInvalid ? "bg-gray-400 cursor-not-allowed" : "bg-green-500 hover:bg-green-600"}`}
+              className={`rounded px-3 py-1 text-white ${emailInvalid ? "bg-gray-400 cursor-not-allowed" : "cursor-pointer bg-green-500 hover:bg-green-600"}`}
             >
               Save
             </button>
 
             <button
               onClick={handleCancel}
-              className="rounded bg-gray-500 px-3 py-1 text-white"
+              className="cursor-pointer rounded bg-gray-500 px-3 py-1 text-white"
             >
               Cancel
             </button>
@@ -158,7 +214,7 @@ export const columns = (
           <div className="flex gap-2">
             <button
               onClick={() => handleEdit(employee)}
-              className="rounded bg-blue-500 px-3 py-1 text-white"
+              className="cursor-pointer rounded bg-blue-500 px-3 py-1 text-white"
             >
               Edit
             </button>
@@ -166,7 +222,7 @@ export const columns = (
             {savedHistory && savedHistory[employee.id] && (
               <button
                 onClick={() => handleUndo(employee.id)}
-                className="rounded bg-red-500 px-3 py-1 text-white"
+                className="cursor-pointer rounded bg-red-500 px-3 py-1 text-white"
               >
                 Undo
               </button>

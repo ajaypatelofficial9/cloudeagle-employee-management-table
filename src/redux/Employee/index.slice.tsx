@@ -1,7 +1,18 @@
 import { createSlice } from "@reduxjs/toolkit";
+import type { PayloadAction } from "@reduxjs/toolkit";
 import { generateEmployees } from "../../data/generateEmployees";
+import type { Employee } from "../../types/employee";
 
-const initialState = {
+interface EmployeeState {
+  employees: Employee[];
+  originalEmployees: Employee[];
+}
+
+type RootState = {
+  employee: EmployeeState;
+};
+
+const initialState: EmployeeState = {
   employees: generateEmployees(10000),
   originalEmployees: [],
 };
@@ -10,7 +21,13 @@ export const employeeSlice = createSlice({
   name: "employee",
   initialState,
   reducers: {
-    updateEmployee: (state, action) => {
+    updateEmployee: (
+      state,
+      action: PayloadAction<{
+        id: number;
+        updatedData: Partial<Employee>;
+      }>
+    ) => {
       const { id, updatedData } = action.payload;
 
       const employeeIndex = state.employees.findIndex(
@@ -25,15 +42,24 @@ export const employeeSlice = createSlice({
       }
     },
 
-    setEmployees: (state, action) => {
+    setEmployees: (
+      state,
+      action: PayloadAction<Employee[]>
+    ) => {
       state.employees = action.payload;
     },
 
-    setOriginalEmployees: (state, action) => {
+    setOriginalEmployees: (
+      state,
+      action: PayloadAction<Employee[]>
+    ) => {
       state.originalEmployees = action.payload;
     },
 
-    undoEmployeeChanges: (state, action) => {
+    undoEmployeeChanges: (
+      state,
+      action: PayloadAction<{ id: number }>
+    ) => {
       const { id } = action.payload;
 
       const originalEmployee = state.originalEmployees.find(
@@ -58,7 +84,7 @@ export const {
   setEmployees
 } = employeeSlice.actions;
 
-export const getEmployees = (state: any) =>
+export const getEmployees = (state: RootState) =>
   state.employee.employees;
 
 export default employeeSlice.reducer;
