@@ -13,7 +13,7 @@ import type {
   SortingState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import { columns } from "./columns";
@@ -45,6 +45,13 @@ const FILTERABLE_COLUMN_IDS = new Set([
 ]);
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
 const ACTION_COLUMN_ID = "actions";
+const tableMinWidth = "1610px";
+const numberFormatter = new Intl.NumberFormat("en-US");
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 0,
+  style: "currency",
+});
 
 const getVisiblePageNumbers = (
   currentPageIndex: number,
@@ -86,10 +93,35 @@ const SortIcon = ({ active, direction }: { active: boolean; direction: "up" | "d
   </svg>
 );
 
+const ExportIcon = () => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    className="h-4 w-4"
+    fill="none"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="2"
+  >
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M5 21h14" />
+  </svg>
+);
+
 const formatDateForCsv = (value: unknown) => {
   const date = new Date(String(value));
 
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
+};
+
+const filterPlaceholders: Record<string, string> = {
+  email: "Filter by email...",
+  employeeName: "Search employee name...",
+  joinDate: "Select join date...",
+  licensesUsed: "Filter licenses used...",
+  role: "Filter by role...",
 };
 
 const hasEmployeeChanges = (
@@ -125,12 +157,21 @@ const EmployeeTable = () => {
   const [originalRowData, setOriginalRowData] =
     useState<Employee | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   useUnsavedChangesWarning(hasUnsavedChanges);
 
   // Track per-row last saved state so Undo is available only after a save.
   const [savedHistory, setSavedHistory] =
     useState<Record<number, Employee>>({});
   const employees = useSelector(getEmployees);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setIsInitialLoading(false);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   const departmentOptions = useMemo(
     () =>
       Array.from(
@@ -140,6 +181,39 @@ const EmployeeTable = () => {
       ).sort(),
     [employees]
   );
+  const summaryCards = useMemo(() => {
+    const totalEmployees = employees.length;
+    const activeEmployees = employees.filter(
+      (employee) => employee.status === "Active"
+    ).length;
+    const inactiveEmployees = totalEmployees - activeEmployees;
+    const averageSalary =
+      totalEmployees === 0
+        ? 0
+        : employees.reduce(
+          (sum, employee) => sum + employee.salary,
+          0
+        ) / totalEmployees;
+
+    return [
+      {
+        label: "Total Employees",
+        value: numberFormatter.format(totalEmployees),
+      },
+      {
+        label: "Active Employees",
+        value: numberFormatter.format(activeEmployees),
+      },
+      {
+        label: "Inactive Employees",
+        value: numberFormatter.format(inactiveEmployees),
+      },
+      {
+        label: "Average Salary",
+        value: currencyFormatter.format(averageSalary),
+      },
+    ];
+  }, [employees]);
 
   const handleEdit = useCallback((row: Employee) => {
     setEditingRowId(row.id);
@@ -286,7 +360,7 @@ const EmployeeTable = () => {
     const columnId = column.id;
     const filterValue = column.getFilterValue();
     const inputClasses =
-      "w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-black";
+      "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-200";
 
     if (columnId === "department") {
       return (
@@ -297,7 +371,7 @@ const EmployeeTable = () => {
           }
           className={inputClasses}
         >
-          <option value="">All departments</option>
+          <option value="">Filter by department...</option>
           {departmentOptions.map((department) => (
             <option key={department} value={department}>
               {department}
@@ -316,7 +390,7 @@ const EmployeeTable = () => {
           }
           className={inputClasses}
         >
-          <option value="">All status</option>
+          <option value="">Filter by status...</option>
           <option value="Active">Active</option>
           <option value="Inactive">Inactive</option>
         </select>
@@ -331,7 +405,7 @@ const EmployeeTable = () => {
           <input
             type="number"
             min="0"
-            placeholder="Min salary"
+            placeholder="Minimum salary..."
             value={salaryFilter.min ?? ""}
             onChange={(event) =>
               updateSalaryFilter(
@@ -345,7 +419,7 @@ const EmployeeTable = () => {
           <input
             type="number"
             min="0"
-            placeholder="Max salary"
+            placeholder="Maximum salary..."
             value={salaryFilter.max ?? ""}
             onChange={(event) =>
               updateSalaryFilter(
@@ -364,6 +438,7 @@ const EmployeeTable = () => {
       return (
         <input
           type="date"
+          aria-label="Select join date"
           value={(filterValue as string | undefined) ?? ""}
           onChange={(event) =>
             column.setFilterValue(event.target.value || undefined)
@@ -377,7 +452,7 @@ const EmployeeTable = () => {
       <input
         type={columnId === "licensesUsed" ? "number" : "text"}
         min={columnId === "licensesUsed" ? "0" : undefined}
-        placeholder="Filter column"
+        placeholder={filterPlaceholders[columnId] ?? "Search records..."}
         value={(filterValue as string | number | undefined) ?? ""}
         onChange={(event) =>
           column.setFilterValue(event.target.value || undefined)
@@ -416,230 +491,308 @@ const EmployeeTable = () => {
   });
 
   return (
-    <div className="p-5">
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
+    <div className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-6">
+      <div className="mx-auto max-w-[1800px] space-y-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-base font-semibold text-gray-900">
+            <p className="text-sm font-medium text-slate-500">
+              Workforce management
+            </p>
+            <h1 className="text-2xl font-semibold text-slate-950">
               Employee Directory
             </h1>
-            <p className="text-sm text-gray-500">
-              {filteredRowCount} records available for export
-            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {summaryCards.map((card) => (
+            <div
+              key={card.label}
+              className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <p className="text-sm font-medium text-slate-500">
+                {card.label}
+              </p>
+              {isInitialLoading ? (
+                <div className="mt-3 h-7 w-28 animate-pulse rounded bg-slate-200" />
+              ) : (
+                <p className="mt-2 text-2xl font-semibold text-slate-950">
+                  {card.value}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">
+                Employee records
+              </p>
+              <p className="text-sm text-slate-500">
+                {numberFormatter.format(filteredRowCount)} export-ready records
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={filteredRowCount === 0 || isInitialLoading}
+              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <ExportIcon />
+              Export CSV
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            className="cursor-pointer rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800"
-          >
-            Export CSV
-          </button>
-        </div>
-
-        {/* Header */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: gridTemplate,
-          }}
-          className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm"
-        >
-          {table.getHeaderGroups().map((headerGroup) =>
-            headerGroup.headers.map((header) => {
-              const sorted = header.column.getIsSorted();
-              const hasFilter = FILTERABLE_COLUMN_IDS.has(header.column.id);
-              const filterOpen = openFilterColumnId === header.column.id;
-              const filterActive =
-                header.column.getFilterValue() !== undefined;
-
-              return (
-                <div
-                  key={header.id}
-                  className="relative flex min-w-0 items-center gap-2 px-4 py-5 text-sm font-bold text-gray-800 transition-all hover:bg-gray-50"
-                >
-                  <button
-                    type="button"
-                    onClick={header.column.getToggleSortingHandler()}
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
-                  >
-                    <span className="truncate">
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                    </span>
-
-                    <span className="flex flex-col leading-none">
-                      <SortIcon active={sorted === "asc"} direction="up" />
-                      <span className="mt-0.5">
-                        <SortIcon active={sorted === "desc"} direction="down" />
-                      </span>
-                    </span>
-                  </button>
-
-                  {hasFilter && (
-                    <>
-                      <button
-                        type="button"
-                        title="Filter column"
-                        aria-label={`Filter ${header.column.id}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setOpenFilterColumnId((current) =>
-                            current === header.column.id
-                              ? null
-                              : header.column.id
-                          );
-                        }}
-                        className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition hover:bg-gray-100 ${filterActive
-                          ? "bg-gray-100 text-black"
-                          : "text-gray-500"
-                          }`}
-                      >
-                        <FilterIcon active={filterActive} />
-                      </button>
-
-                      {filterOpen && (
-                        <div
-                          onClick={(event) => event.stopPropagation()}
-                          className="absolute right-2 top-14 z-30 w-56 rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
-                        >
-                          {renderColumnFilter(header.column)}
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              header.column.setFilterValue(undefined);
-                              setOpenFilterColumnId(null);
-                            }}
-                            className="mt-3 w-full rounded-md bg-black px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-800"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Virtualized Body */}
-        <div
-          ref={parentRef}
-          className="overflow-auto"
-          style={{
-            height: "600px",
-          }}
-        >
           <div
-            style={{
-              height: `${virtualizer.getTotalSize()}px`,
-              position: "relative",
-            }}
+            ref={parentRef}
+            className="max-h-[640px] overflow-auto"
           >
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const row = rows[virtualRow.index];
+            <div style={{ minWidth: tableMinWidth }}>
+              {/* Header */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: gridTemplate,
+                }}
+                className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50 shadow-sm"
+              >
+                {table.getHeaderGroups().map((headerGroup) =>
+                  headerGroup.headers.map((header) => {
+                    const sorted = header.column.getIsSorted();
+                    const hasFilter = FILTERABLE_COLUMN_IDS.has(header.column.id);
+                    const filterOpen = openFilterColumnId === header.column.id;
+                    const filterActive =
+                      header.column.getFilterValue() !== undefined;
+                    const alignFilterMenuLeft =
+                      header.column.id === "employeeName";
 
-              return (
-                <div
-                  key={row.id}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${virtualRow.start}px)`,
-                    display: "grid",
-                    gridTemplateColumns: gridTemplate,
-                  }}
-                  className="border-b bg-white hover:bg-gray-50 items-center"
-                >
-                  {row.getVisibleCells().map((cell) => (
+                    return (
+                      <div
+                        key={header.id}
+                        className="relative flex min-w-0 items-center gap-2 bg-slate-50 px-4 py-4 text-xs font-semibold uppercase text-slate-600 transition hover:bg-slate-100"
+                      >
+                        <button
+                          type="button"
+                          onClick={header.column.getToggleSortingHandler()}
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                        >
+                          <span className="truncate">
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                          </span>
+
+                          <span className="flex flex-col leading-none">
+                            <SortIcon active={sorted === "asc"} direction="up" />
+                            <span className="mt-0.5">
+                              <SortIcon active={sorted === "desc"} direction="down" />
+                            </span>
+                          </span>
+                        </button>
+
+                        {hasFilter && (
+                          <>
+                            <button
+                              type="button"
+                              title="Filter column"
+                              aria-label={`Filter ${header.column.id}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenFilterColumnId((current) =>
+                                  current === header.column.id
+                                    ? null
+                                    : header.column.id
+                                );
+                              }}
+                              className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition hover:bg-white hover:shadow-sm ${filterActive
+                                ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-200"
+                                : "text-slate-500"
+                                }`}
+                            >
+                              <FilterIcon active={filterActive} />
+                            </button>
+
+                            {filterOpen && (
+                              <div
+                                onClick={(event) => event.stopPropagation()}
+                                className={`absolute top-12 z-50 w-56 rounded-lg border border-slate-200 bg-white p-3 shadow-lg ${alignFilterMenuLeft
+                                  ? "left-4"
+                                  : "right-2"
+                                  }`}
+                              >
+                                {renderColumnFilter(header.column)}
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    header.column.setFilterValue(undefined);
+                                    setOpenFilterColumnId(null);
+                                  }}
+                                  className="mt-3 h-9 w-full cursor-pointer rounded-md bg-slate-950 px-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {isInitialLoading ? (
+                <div className="p-4">
+                  {Array.from({ length: 8 }, (_, index) => (
                     <div
-                      key={cell.id}
-                      className="px-4 py-4 text-sm text-gray-700"
+                      key={index}
+                      className="mb-3 grid animate-pulse items-center gap-4 rounded-md border border-slate-100 bg-white p-4"
+                      style={{ gridTemplateColumns: gridTemplate }}
                     >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+                      {Array.from({ length: 9 }, (_, cellIndex) => (
+                        <div
+                          key={cellIndex}
+                          className="h-4 rounded bg-slate-200"
+                        />
+                      ))}
                     </div>
                   ))}
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
-          <div className="flex items-center gap-3">
-            <span>
-              Showing {pageStart}-{pageEnd} of {filteredRowCount}
-              {filteredRowCount !== totalRowCount
-                ? ` filtered from ${totalRowCount}`
-                : ""}{" "}
-              records
-            </span>
-
-            <label className="flex items-center gap-2">
-              <span>Rows per page</span>
-              <select
-                value={table.getState().pagination.pageSize}
-                onChange={(event) => {
-                  table.setPageSize(Number(event.target.value));
-                }}
-                className="cursor-pointer rounded-md border border-gray-300 px-2 py-1 outline-none focus:border-black"
-              >
-                {PAGE_SIZE_OPTIONS.map((pageSize) => (
-                  <option key={pageSize} value={pageSize}>
-                    {pageSize}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="cursor-pointer rounded-md border border-gray-300 px-3 py-1 font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-
-            {pageNumbers.map((pageNumber) => {
-              const active =
-                pageNumber === table.getState().pagination.pageIndex + 1;
-
-              return (
-                <button
-                  key={pageNumber}
-                  type="button"
-                  onClick={() => table.setPageIndex(pageNumber - 1)}
-                  className={`h-8 min-w-8 cursor-pointer rounded-md border px-2 font-medium transition ${active
-                    ? "border-black bg-black text-white"
-                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                    }`}
+              ) : rows.length === 0 ? (
+                <div
+                  className="flex h-full min-h-[360px] flex-col items-center justify-center px-6 text-center"
                 >
-                  {pageNumber}
-                </button>
-              );
-            })}
+                  <div className="grid h-12 w-12 place-items-center rounded-full bg-slate-100 text-slate-500">
+                    <FilterIcon active={false} />
+                  </div>
+                  <h2 className="mt-4 text-base font-semibold text-slate-950">
+                    No matching employees
+                  </h2>
+                  <p className="mt-1 max-w-md text-sm text-slate-500">
+                    Adjust or clear the active column filters to bring records back into view.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    position: "relative",
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const row = rows[virtualRow.index];
+                    const isEditing = editingRowId === row.original.id;
 
-            <button
-              type="button"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="cursor-pointer rounded-md border border-gray-300 px-3 py-1 font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
+                    return (
+                      <div
+                        key={row.id}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                          display: "grid",
+                          gridTemplateColumns: gridTemplate,
+                        }}
+                        className={`items-center border-b border-slate-100 transition-colors ${virtualRow.index % 2 === 0
+                          ? "bg-white"
+                          : "bg-slate-50/60"
+                          } ${isEditing
+                            ? "bg-blue-50 ring-1 ring-inset ring-blue-200"
+                            : "hover:bg-slate-100/80"
+                          }`}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <div
+                            key={cell.id}
+                            className="min-w-0 px-4 py-4 text-sm text-slate-700"
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                Showing {pageStart}-{pageEnd} of {numberFormatter.format(filteredRowCount)}
+                {filteredRowCount !== totalRowCount
+                  ? ` filtered from ${numberFormatter.format(totalRowCount)}`
+                  : ""}{" "}
+                records
+              </span>
+
+              <label className="flex items-center gap-2">
+                <span>Rows per page</span>
+                <select
+                  value={table.getState().pagination.pageSize}
+                  onChange={(event) => {
+                    table.setPageSize(Number(event.target.value));
+                  }}
+                  className="h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-2 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                >
+                  {PAGE_SIZE_OPTIONS.map((pageSize) => (
+                    <option key={pageSize} value={pageSize}>
+                      {pageSize}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                className="h-9 cursor-pointer rounded-md border border-slate-300 px-3 font-medium transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+
+              {pageNumbers.map((pageNumber) => {
+                const active =
+                  pageNumber === table.getState().pagination.pageIndex + 1;
+
+                return (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => table.setPageIndex(pageNumber - 1)}
+                    className={`h-9 min-w-9 cursor-pointer rounded-md border px-2 font-medium transition ${active
+                      ? "border-slate-950 bg-slate-950 text-white"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                className="h-9 cursor-pointer rounded-md border border-slate-300 px-3 font-medium transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       </div>

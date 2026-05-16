@@ -5,6 +5,22 @@ import type { Employee } from "../../../types/employee";
 const columnHelper = createColumnHelper<Employee>();
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type EditableEmployee = Partial<Employee>;
+const inputClasses =
+  "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200";
+const primaryButtonClasses =
+  "inline-flex h-9 min-w-16 cursor-pointer items-center justify-center rounded-md bg-slate-950 px-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300";
+const secondaryButtonClasses =
+  "inline-flex h-9 min-w-16 cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50";
+const editButtonClasses =
+  "inline-flex h-9 min-w-16 cursor-pointer items-center justify-center rounded-md bg-blue-600 px-3 text-sm font-medium text-white transition hover:bg-blue-700";
+const undoButtonClasses =
+  "inline-flex h-9 min-w-16 cursor-pointer items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 transition hover:bg-rose-100";
+const salaryFormatter = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 0,
+  style: "currency",
+});
+
 const exactTextFilter: FilterFn<Employee> = (
   row,
   columnId,
@@ -86,10 +102,12 @@ export const columns = (
                 e.target.value
               )
             }
-            className="w-full rounded border px-2 py-1"
+            className={inputClasses}
           />
         ) : (
-          info.getValue()
+          <span className="font-medium text-slate-900">
+            {info.getValue()}
+          </span>
         ),
     }),
 
@@ -106,16 +124,18 @@ export const columns = (
         return editingRowId === info.row.original.id ? (
           <div>
             <input
+              type="text"
+              inputMode="email"
               onFocus={() => setEditingField("email")}
               value={emailValue}
               onChange={(e) =>
                 handleInputChange("email", e.target.value)
               }
-              className={`w-full rounded border px-2 py-1 ${emailInvalid ? "border-red-500" : "border-gray-700"}`}
+              className={`${inputClasses} ${emailInvalid ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100" : ""}`}
             />
           </div>
         ) : (
-          info.getValue()
+          <span className="text-slate-600">{info.getValue()}</span>
         );
       },
     }),
@@ -145,10 +165,12 @@ export const columns = (
                 Number(e.target.value)
               )
             }
-            className="w-full rounded border px-2 py-1"
+            className={inputClasses}
           />
         ) : (
-          `${info.getValue()}`
+          <span className="font-medium text-slate-900">
+            {salaryFormatter.format(info.getValue())}
+          </span>
         ),
     }),
 
@@ -161,9 +183,9 @@ export const columns = (
       filterFn: exactTextFilter,
       cell: (info) => (
         <span
-          className={`px-2 py-1 rounded text-sm w-24 text-center inline-block ${info.getValue() === "Active"
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
+          className={`inline-flex h-7 w-24 items-center justify-center rounded-full text-xs font-semibold ring-1 ${info.getValue() === "Active"
+              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+              : "bg-slate-100 text-slate-600 ring-slate-200"
             }`}
         >
           {info.getValue()}
@@ -195,17 +217,19 @@ export const columns = (
         return editingRowId === employee.id ? (
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => handleSave(employee.id)}
               disabled={emailInvalid}
               title={emailInvalid ? "Please fix the email before saving." : "Save changes"}
-              className={`rounded px-3 py-1 text-white ${emailInvalid ? "bg-gray-400 cursor-not-allowed" : "cursor-pointer bg-green-500 hover:bg-green-600"}`}
+              className={primaryButtonClasses}
             >
               Save
             </button>
 
             <button
+              type="button"
               onClick={handleCancel}
-              className="cursor-pointer rounded bg-gray-500 px-3 py-1 text-white"
+              className={secondaryButtonClasses}
             >
               Cancel
             </button>
@@ -213,16 +237,18 @@ export const columns = (
         ) : (
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => handleEdit(employee)}
-              className="cursor-pointer rounded bg-blue-500 px-3 py-1 text-white"
+              className={editButtonClasses}
             >
               Edit
             </button>
 
             {savedHistory && savedHistory[employee.id] && (
               <button
+                type="button"
                 onClick={() => handleUndo(employee.id)}
-                className="cursor-pointer rounded bg-red-500 px-3 py-1 text-white"
+                className={undoButtonClasses}
               >
                 Undo
               </button>
