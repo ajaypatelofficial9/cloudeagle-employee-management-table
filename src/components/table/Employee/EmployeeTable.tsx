@@ -21,6 +21,7 @@ import {
   getEmployees,
   updateEmployee,
 } from "../../../redux/Employee/index.slice";
+import { useUnsavedChangesWarning } from "../../../hooks/useUnsavedChangesWarning";
 import type { Employee } from "../../../types/employee";
 import { exportRowsToCsv } from "../../../utils/csvExport";
 
@@ -91,6 +92,17 @@ const formatDateForCsv = (value: unknown) => {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 };
 
+const hasEmployeeChanges = (
+  originalEmployee: Employee | null,
+  editedEmployee: EditableEmployee
+) => {
+  if (!originalEmployee) return false;
+
+  return (Object.keys(editedEmployee) as Array<keyof Employee>).some(
+    (field) => editedEmployee[field] !== originalEmployee[field]
+  );
+};
+
 const EmployeeTable = () => {
   const dispatch = useDispatch();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -112,6 +124,8 @@ const EmployeeTable = () => {
 
   const [originalRowData, setOriginalRowData] =
     useState<Employee | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  useUnsavedChangesWarning(hasUnsavedChanges);
 
   // Track per-row last saved state so Undo is available only after a save.
   const [savedHistory, setSavedHistory] =
@@ -129,6 +143,7 @@ const EmployeeTable = () => {
 
   const handleEdit = useCallback((row: Employee) => {
     setEditingRowId(row.id);
+    setHasUnsavedChanges(false);
 
     setEditedData(row);
     editedDataRef.current = row;
@@ -143,9 +158,10 @@ const EmployeeTable = () => {
     setEditedData((prev) => {
       const next = { ...prev, [field]: value };
       editedDataRef.current = next;
+      setHasUnsavedChanges(hasEmployeeChanges(originalRowData, next));
       return next;
     });
-  }, []);
+  }, [originalRowData]);
 
   const handleSave = useCallback((id: number) => {
     const prevEmployee = employees.find(
@@ -163,6 +179,7 @@ const EmployeeTable = () => {
 
     setEditingRowId(null);
     setEditingField(null);
+    setHasUnsavedChanges(false);
   }, [dispatch, employees]);
 
   const handleCancel = useCallback(() => {
@@ -173,6 +190,7 @@ const EmployeeTable = () => {
 
     setEditingRowId(null);
     setEditingField(null);
+    setHasUnsavedChanges(false);
   }, [originalRowData]);
 
   const handleUndo = useCallback((id: number) => {
