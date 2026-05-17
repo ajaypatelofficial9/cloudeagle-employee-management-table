@@ -1,6 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
-import { generateEmployees } from "../../data/generateEmployees";
 import type { Employee } from "../../types/employee";
 
 interface EmployeeState {
@@ -13,7 +12,7 @@ type RootState = {
 };
 
 const initialState: EmployeeState = {
-  employees: generateEmployees(10000),
+  employees: [],
   originalEmployees: [],
 };
 

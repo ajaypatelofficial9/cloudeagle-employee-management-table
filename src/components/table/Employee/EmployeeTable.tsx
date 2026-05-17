@@ -19,6 +19,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { columns } from "./columns";
 import {
   getEmployees,
+  setEmployees,
   updateEmployee,
 } from "../../../redux/Employee/index.slice";
 import { useUnsavedChangesWarning } from "../../../hooks/useUnsavedChangesWarning";
@@ -164,13 +165,25 @@ const EmployeeTable = () => {
   const [savedHistory, setSavedHistory] =
     useState<Record<number, Employee>>({});
   const employees = useSelector(getEmployees);
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setIsInitialLoading(false);
-    });
 
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadEmployees = async () => {
+      const { generateEmployees } = await import("../../../data/generateEmployees");
+
+      if (!isMounted) return;
+
+      dispatch(setEmployees(generateEmployees(10000)));
+      setIsInitialLoading(false);
+    };
+
+    void loadEmployees();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [dispatch]);
 
   const departmentOptions = useMemo(
     () =>
@@ -495,9 +508,6 @@ const EmployeeTable = () => {
       <div className="mx-auto max-w-[1800px] space-y-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-500">
-              Workforce management
-            </p>
             <h1 className="text-2xl font-semibold text-slate-950">
               Employee Directory
             </h1>
