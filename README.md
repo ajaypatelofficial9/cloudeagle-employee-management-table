@@ -67,7 +67,7 @@ The project focuses on:
 
 # Installation & Setup
 # Clone Project
-git clone <repository-url>
+git clone https://github.com/ajaypatelofficial9/cloudeagle-employee-management-table.git
 
 ## Install Dependencies
 
